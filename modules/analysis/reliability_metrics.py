@@ -4,6 +4,7 @@ Módulo para cálculo de métricas de confiabilidade
 import numpy as np
 from typing import Dict
 from scipy import stats
+from scipy.special import gamma  # CORREÇÃO: importar gamma
 
 
 class ReliabilityMetrics:
@@ -56,7 +57,7 @@ class ReliabilityMetrics:
         beta = self.results["beta"]
         eta = self.results["eta"]
         
-        return eta**2 * (stats.gamma(1 + 2/beta) - stats.gamma(1 + 1/beta)**2)
+        return eta**2 * (gamma(1 + 2/beta) - gamma(1 + 1/beta)**2)
     
     def _calculate_std_dev(self) -> float:
         """Calcula o desvio padrão"""
@@ -118,4 +119,3 @@ class ReliabilityMetrics:
             "reliability_margin": actual_reliability - required_reliability,
             "time_for_required_reliability": time_for_required
         }
-
