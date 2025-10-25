@@ -281,5 +281,235 @@ if st.session_state.get("analysis_results") is not None:
                     st.metric("Não-Confiabilidade", f"{metrics_at_time['unreliability']*100:.2f}%")
                     st.metric("Taxa de Falha", f"{metrics_at_time['hazard_rate']:.6f}")
 
+# ETAPA 6: Recursos Avançados
+if st.session_state.get("analysis_results") is not None:
+    st.markdown("---")
+    st.header("6️⃣ Recursos Avançados")
+    
+    from utils.report_generator import display_report_section
+    from modules.ui.advanced_calculator import AdvancedCalculator
+    
+    analysis_results = st.session_state["analysis_results"]
+    weibull_obj = analysis_results["weibull_obj"]
+    metrics_obj = analysis_results["metrics_obj"]
+    
+    tab1, tab2, tab3 = st.tabs([
+        "📄 Relatórios",
+        "🧮 Calculadoras",
+        "💰 Análise de Custos"
+    ])
+    
+    with tab1:
+        display_report_section(analysis_results, st.session_state["filename"])
+    
+    with tab2:
+        st.subheader("🎯 Análise de Missão")
+        
+        calculator = AdvancedCalculator(weibull_obj, metrics_obj)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            mission_time = st.number_input(
+                f"Tempo da Missão ({analysis_results['weibull']['time_unit']})",
+                min_value=0.0,
+                value=float(analysis_results['metrics']['median_life']),
+                step=100.0
+            )
+        
+        with col2:
+            required_rel = st.slider(
+                "Confiabilidade Requerida",
+                min_value=0.50,
+                max_value=0.99,
+                value=0.90,
+                step=0.01,
+                format="%.2f"
+            )
+        
+        if st.button("🔍 Analisar Missão", key="mission_btn"):
+            mission_result = calculator.mission_analysis(mission_time, required_rel)
+            
+            col_a, col_b, col_c = st.columns(3)
+            
+            with col_a:
+                st.metric(
+                    "Confiabilidade Real",
+                    f"{mission_result['actual_reliability']*100:.2f}%",
+                    delta=f"{mission_result['reliability_margin']*100:+.2f}%"
+                )
+            
+            with col_b:
+                meets = "✅ SIM" if mission_result['meets_requirement'] else "❌ NÃO"
+                st.metric("Atende Requisito?", meets)
+            
+            with col_c:
+                st.metric(
+                    "Tempo para Atingir Requisito",
+                    f"{mission_result['time_for_required_reliability']:.1f}",
+                    help="Tempo necessário para atingir a confiabilidade requerida"
+                )
+        
+        st.markdown("---")
+        st.subheader("📅 Planejamento de Manutenção")
+        
+        target_rel = st.slider(
+            "Confiabilidade Alvo para Manutenção",
+            min_value=0.80,
+            max_value=0.99,
+            value=0.90,
+            step=0.01
+        )
+        
+        if st.button("📋 Calcular Intervalos", key="maint_btn"):
+            maint_plan = calculator.maintenance_planning(target_rel)
+            
+            st.success(f"**Recomendação:** Estratégia {maint_plan['recommendation'].upper()}")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric(
+                    "Conservador (80%)",
+                    f"{maint_plan['conservative']:.0f}",
+                    help="Intervalo mais seguro"
+                )
+            
+            with col2:
+                st.metric(
+                    "Moderado (90%)",
+                    f"{maint_plan['moderate']:.0f}",
+                    help="Intervalo balanceado"
+                )
+            
+            with col3:
+                st.metric(
+                    "Agressivo (95%)",
+                    f"{maint_plan['aggressive']:.0f}",
+                    help="Intervalo mais longo"
+                )
+        
+        st.markdown("---")
+        st.subheader("🔧 Dimensionamento de Peças de Reposição")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fleet_size = st.number_input(
+                "Tamanho da Frota",
+                min_value=1,
+                value=10,
+                step=1
+            )
+        
+        with col2:
+            time_period = st.number_input(
+                f"Período de Análise ({analysis_results['weibull']['time_unit']})",
+                min_value=100.0,
+                value=float(analysis_results['metrics']['mttf']),
+                step=100.0
+            )
+        
+        if st.button("🔢 Calcular Necessidade", key="spare_btn"):
+            spare_result = calculator.spare_parts_analysis(fleet_size, time_period)
+            
+            st.info(f"""
+            **Probabilidade de Falha no Período:** {spare_result['failure_probability']*100:.2f}%
+            
+            **Falhas Esperadas:** {spare_result['expected_failures']:.1f}
+            """)
+            
+            col_a, col_b = st.columns(2)
+            
+            with col_a:
+                st.metric(
+                    "Peças Recomendadas (90% confiança)",
+                    spare_result['recommended_spares_90'],
+                    help=f"Entre {spare_result['confidence_90'][0]} e {spare_result['confidence_90'][1]}"
+                )
+            
+            with col_b:
+                st.metric(
+                    "Peças Recomendadas (95% confiança)",
+                    spare_result['recommended_spares_95'],
+                    help=f"Entre {spare_result['confidence_95'][0]} e {spare_result['confidence_95'][1]}"
+                )
+    
+    with tab3:
+        st.subheader("💰 Análise Custo-Benefício")
+        
+        st.markdown("""
+        Compare os custos de manutenção preventiva vs. reativa.
+        """)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            maint_cost = st.number_input(
+                "Custo de Manutenção Preventiva ($)",
+                min_value=0.0,
+                value=1000.0,
+                step=100.0
+            )
+            
+            failure_cost = st.number_input(
+                "Custo de Reparo de Falha ($)",
+                min_value=0.0,
+                value=5000.0,
+                step=100.0
+            )
+        
+        with col2:
+            downtime_cost = st.number_input(
+                "Custo de Parada por Hora ($/h)",
+                min_value=0.0,
+                value=500.0,
+                step=50.0
+            )
+            
+            mttr = st.number_input(
+                "MTTR - Tempo Médio de Reparo (h)",
+                min_value=0.1,
+                value=8.0,
+                step=0.5
+            )
+        
+        if st.button("💵 Calcular Análise de Custos", key="cost_btn"):
+            cost_result = calculator.cost_analysis(
+                maint_cost, failure_cost, downtime_cost, mttr
+            )
+            
+            st.success(f"**Recomendação:** {cost_result['recommendation']}")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric(
+                    "Custo/Hora (Reativo)",
+                    f"${cost_result['reactive_cost_per_hour']:.2f}"
+                )
+            
+            with col2:
+                st.metric(
+                    "Custo/Hora (Preventivo)",
+                    f"${cost_result['preventive_cost_per_hour']:.2f}"
+                )
+            
+            with col3:
+                st.metric(
+                    "Economia",
+                    f"${cost_result['savings_per_hour']:.2f}/h",
+                    delta=f"{cost_result['savings_percent']:.1f}%"
+                )
+            
+            st.info(f"""
+            **Intervalo de Manutenção Preventiva Recomendado:** {cost_result['pm_interval']:.0f} {analysis_results['weibull']['time_unit']}
+            
+            **MTTF:** {cost_result['mttf']:.0f} {analysis_results['weibull']['time_unit']}
+            
+            Com manutenção preventiva, você economiza **${cost_result['savings_per_hour']:.2f} por hora** de operação!
+            """)
+
+
 if st.session_state["data"] is None:
     st.info("👆 Faça o upload de um arquivo para começar.")
