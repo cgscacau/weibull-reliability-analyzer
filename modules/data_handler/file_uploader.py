@@ -5,12 +5,39 @@ import streamlit as st
 import pandas as pd
 import io
 from typing import Optional, Tuple
-import PyPDF2
-import pdfplumber
-import tabula
+import sys
+import os
 
-from config import SUPPORTED_FORMATS, ERROR_MESSAGES, SUCCESS_MESSAGES
-from utils.helpers import create_info_box
+# Adiciona o diretório raiz ao path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+try:
+    import PyPDF2
+    import pdfplumber
+    import tabula
+except ImportError:
+    st.warning("⚠️ Algumas bibliotecas de PDF não estão disponíveis. A leitura de PDF pode não funcionar.")
+
+from config.settings import SUPPORTED_FORMATS
+from utils.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
+
+
+def create_info_box(message: str, type: str = "info"):
+    """
+    Cria uma caixa de informação
+    
+    Args:
+        message: Mensagem a ser exibida
+        type: Tipo da mensagem (info, success, warning, error)
+    """
+    if type == "info":
+        st.info(message)
+    elif type == "success":
+        st.success(message)
+    elif type == "warning":
+        st.warning(message)
+    elif type == "error":
+        st.error(message)
 
 
 class FileUploader:
@@ -41,7 +68,7 @@ class FileUploader:
             **Formatos aceitos:**
             - **CSV** (.csv): Arquivo de texto separado por vírgulas ou ponto-e-vírgula
             - **Excel** (.xlsx, .xls): Planilhas do Microsoft Excel
-            - **PDF** (.pdf): Tabelas extraídas de documentos PDF
+            - **PDF** (.pdf): Tabelas extraídas de documentos PDF *(experimental)*
             
             **Dica:** Para melhores resultados, use arquivos CSV ou Excel.
             """)
@@ -156,31 +183,33 @@ class FileUploader:
         Returns:
             DataFrame ou None
         """
+        import tempfile
+        
         try:
-            # Salva o arquivo temporariamente
-            with open("temp.pdf", "wb") as f:
-                f.write(file.getbuffer())
+            # Usa arquivo temporário do sistema
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                tmp_file.write(file.getbuffer())
+                tmp_path = tmp_file.name
             
             # Tenta extrair tabelas com tabula
             try:
-                tables = tabula.read_pdf("temp.pdf", pages='all', multiple_tables=True)
+                tables = tabula.read_pdf(tmp_path, pages='all', multiple_tables=True)
                 if tables:
                     if len(tables) > 1:
                         st.warning(f"⚠️ {len(tables)} tabelas encontradas. Usando a primeira.")
                     df = tables[0]
                     return df
-            except:
-                pass
+            except Exception as e:
+                st.warning(f"Tabula falhou: {str(e)}. Tentando pdfplumber...")
             
             # Se tabula falhar, tenta com pdfplumber
-            with pdfplumber.open("temp.pdf") as pdf:
+            with pdfplumber.open(tmp_path) as pdf:
                 all_tables = []
                 for page in pdf.pages:
                     tables = page.extract_tables()
                     all_tables.extend(tables)
                 
                 if all_tables:
-                    # Converte primeira tabela para DataFrame
                     table = all_tables[0]
                     df = pd.DataFrame(table[1:], columns=table[0])
                     return df
@@ -193,6 +222,5 @@ class FileUploader:
             return None
         finally:
             # Remove arquivo temporário
-            import os
-            if os.path.exists("temp.pdf"):
-                os.remove("temp.pdf")
+            if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                os.remove(tmp_path)
