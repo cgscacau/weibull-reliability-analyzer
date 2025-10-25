@@ -3,8 +3,14 @@ Weibull Reliability Analyzer
 Aplicativo para análise de confiabilidade usando distribuição de Weibull
 """
 import streamlit as st
-from config import APP_CONFIG
-from modules.data_handler import FileUploader
+import sys
+import os
+
+# Adiciona o diretório raiz ao path
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
+from config.settings import APP_CONFIG
+from modules.data_handler.file_uploader import FileUploader
 from utils.helpers import init_session_state
 
 # Configuração da página
@@ -21,8 +27,6 @@ st.markdown("### Análise de Confiabilidade para Frotas e Equipamentos")
 
 # Sidebar
 with st.sidebar:
-    st.image("https://via.placeholder.com/150x50/1f77b4/ffffff?text=WRA", use_container_width=True)
-    st.markdown("---")
     st.markdown("### 🎯 Navegação")
     st.markdown("""
     - 📊 **Análise Principal**: Upload e análise de dados
