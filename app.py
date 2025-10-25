@@ -312,6 +312,149 @@ if st.session_state.get("processed_data") is not None:
                 else:
                     st.warning("⚠️ " + ks_result['interpretation'])
 
+# ETAPA 5: Visualizações
+if st.session_state.get("analysis_results") is not None:
+    st.markdown("---")
+    st.header("5️⃣ Visualizações")
+    
+    analysis_results = st.session_state["analysis_results"]
+    weibull_obj = analysis_results["weibull_obj"]
+    metrics_obj = analysis_results["metrics_obj"]
+    
+    # Importa classes de visualização
+    from modules.visualization.weibull_plots import WeibullPlots
+    from modules.visualization.reliability_plots import ReliabilityPlots
+    
+    # Cria objetos de visualização
+    weibull_plots = WeibullPlots(weibull_obj, metrics_obj)
+    reliability_plots = ReliabilityPlots(weibull_obj, metrics_obj)
+    
+    # Tabs para diferentes visualizações
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Gráficos Principais",
+        "📈 Análise Detalhada", 
+        "📉 Métricas",
+        "🔍 Análise Completa"
+    ])
+    
+    with tab1:
+        st.subheader("Gráficos Principais de Weibull")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.plotly_chart(
+                weibull_plots.probability_plot(),
+                use_container_width=True,
+                key="prob_plot"
+            )
+        
+        with col2:
+            st.plotly_chart(
+                weibull_plots.reliability_vs_time(),
+                use_container_width=True,
+                key="reliability_plot"
+            )
+    
+    with tab2:
+        st.subheader("Análise Detalhada")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.plotly_chart(
+                weibull_plots.hazard_rate_plot(),
+                use_container_width=True,
+                key="hazard_plot"
+            )
+        
+        with col2:
+            st.plotly_chart(
+                reliability_plots.failure_distribution_histogram(),
+                use_container_width=True,
+                key="histogram_plot"
+            )
+        
+        st.plotly_chart(
+            weibull_plots.pdf_cdf_plot(),
+            use_container_width=True,
+            key="pdf_cdf_plot"
+        )
+    
+    with tab3:
+        st.subheader("Métricas Visuais")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.plotly_chart(
+                reliability_plots.b_life_chart(),
+                use_container_width=True,
+                key="blife_chart"
+            )
+        
+        with col2:
+            st.plotly_chart(
+                reliability_plots.metrics_comparison(),
+                use_container_width=True,
+                key="metrics_comparison"
+            )
+    
+    with tab4:
+        st.subheader("Visão Geral Completa")
+        st.plotly_chart(
+            weibull_plots.combined_analysis_plot(),
+            use_container_width=True,
+            key="combined_plot"
+        )
+        
+        # Calculadora interativa
+        st.markdown("---")
+        st.subheader("🧮 Calculadora de Confiabilidade")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            calc_time = st.number_input(
+                f"Tempo para análise ({analysis_results['weibull']['time_unit']})",
+                min_value=0.0,
+                value=float(analysis_results['metrics']['median_life']),
+                step=10.0
+            )
+        
+        with col2:
+            if st.button("🔄 Calcular Métricas", type="primary"):
+                metrics_at_time = metrics_obj.reliability_at_time(calc_time)
+                
+                st.markdown("#### Resultados:")
+                col_a, col_b = st.columns(2)
+                
+                with col_a:
+                    st.metric(
+                        "Confiabilidade",
+                        f"{metrics_at_time['reliability']*100:.2f}%",
+                        help="Probabilidade de funcionar até este tempo"
+                    )
+                    st.metric(
+                        "PDF",
+                        f"{metrics_at_time['pdf']:.6f}",
+                        help="Densidade de probabilidade neste tempo"
+                    )
+                
+                with col_b:
+                    st.metric(
+                        "Não-Confiabilidade",
+                        f"{metrics_at_time['unreliability']*100:.2f}%",
+                        help="Probabilidade de falhar até este tempo"
+                    )
+                    st.metric(
+                        "Taxa de Falha",
+                        f"{metrics_at_time['hazard_rate']:.6f}",
+                        help="Taxa instantânea de falha neste tempo"
+                    )
+
+
+
 # Mensagem inicial
 if st.session_state["data"] is None:
     st.info("👆 Faça o upload de um arquivo para começar a análise.")
