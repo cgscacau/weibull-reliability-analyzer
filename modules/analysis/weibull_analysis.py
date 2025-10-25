@@ -4,6 +4,7 @@ Módulo para análise de Weibull
 import numpy as np
 import pandas as pd
 from scipy import stats
+from scipy.special import gamma  # CORREÇÃO: importar gamma da scipy.special
 from scipy.optimize import minimize
 from typing import Dict, Tuple, Optional
 import streamlit as st
@@ -79,35 +80,80 @@ class WeibullAnalysis:
             if beta <= 0 or eta <= 0:
                 return np.inf
             
-            # Log-likelihood para falhas
-            ll_failures = np.sum(
-                np.log(beta) - beta * np.log(eta) + 
-                (beta - 1) * np.log(self.failures) - 
-                (self.failures / eta) ** beta
-            )
-            
-            # Log-likelihood para censuras (survival function)
-            ll_censored = -np.sum((self.censored / eta) ** beta)
-            
-            return -(ll_failures + ll_censored)
+            try:
+                # Log-likelihood para falhas
+                ll_failures = np.sum(
+                    np.log(beta) - beta * np.log(eta) + 
+                    (beta - 1) * np.log(self.failures) - 
+                    (self.failures / eta) ** beta
+                )
+                
+                # Log-likelihood para censuras (survival function)
+                if len(self.censored) > 0:
+                    ll_censored = -np.sum((self.censored / eta) ** beta)
+                else:
+                    ll_censored = 0
+                
+                return -(ll_failures + ll_censored)
+            except:
+                return np.inf
         
         # Estimativa inicial usando método dos momentos
         mean_failures = np.mean(self.failures)
         std_failures = np.std(self.failures)
         
-        # Aproximação inicial
-        beta_init = (std_failures / mean_failures) ** (-1.086)
-        eta_init = mean_failures / stats.gamma(1 + 1/beta_init)
+        # Aproximação inicial (método simplificado)
+        cv = std_failures / mean_failures if mean_failures > 0 else 1
         
-        # Otimização
-        result = minimize(
-            neg_log_likelihood,
-            x0=[beta_init, eta_init],
-            method='Nelder-Mead',
-            bounds=[(0.1, 10), (0.1, None)]
-        )
+        # Estimativa inicial de beta baseada no CV
+        if cv < 0.3:
+            beta_init = 3.5
+        elif cv < 0.5:
+            beta_init = 2.5
+        elif cv < 0.8:
+            beta_init = 1.5
+        else:
+            beta_init = 1.0
         
-        beta, eta = result.x
+        # Estimativa inicial de eta usando função gamma
+        eta_init = mean_failures / gamma(1 + 1/beta_init)
+        
+        # Garante valores positivos
+        beta_init = max(0.5, min(beta_init, 10))
+        eta_init = max(mean_failures * 0.5, min(eta_init, mean_failures * 2))
+        
+        # Otimização com múltiplas tentativas
+        best_result = None
+        best_likelihood = np.inf
+        
+        # Tenta diferentes pontos iniciais
+        for beta_try in [beta_init, 1.0, 2.0]:
+            for eta_try in [eta_init, mean_failures, np.median(self.failures)]:
+                try:
+                    result = minimize(
+                        neg_log_likelihood,
+                        x0=[beta_try, eta_try],
+                        method='Nelder-Mead',
+                        options={'maxiter': 1000, 'xatol': 1e-8, 'fatol': 1e-8}
+                    )
+                    
+                    if result.fun < best_likelihood and result.x[0] > 0 and result.x[1] > 0:
+                        best_likelihood = result.fun
+                        best_result = result
+                except:
+                    continue
+        
+        if best_result is None:
+            # Fallback para rank regression se MLE falhar
+            st.warning("⚠️ MLE falhou, usando Rank Regression como alternativa.")
+            return self._fit_rank_regression()
+        
+        beta, eta = best_result.x
+        
+        # Valida resultados
+        if beta <= 0 or beta > 20 or eta <= 0:
+            st.warning("⚠️ Parâmetros MLE fora do intervalo esperado, usando Rank Regression.")
+            return self._fit_rank_regression()
         
         return beta, eta
     
@@ -126,6 +172,11 @@ class WeibullAnalysis:
         ranks = np.arange(1, n + 1)
         median_ranks = (ranks - 0.3) / (n + 0.4)
         
+        # Remove valores muito próximos de 0 ou 1
+        valid_idx = (median_ranks > 0.001) & (median_ranks < 0.999)
+        median_ranks = median_ranks[valid_idx]
+        sorted_failures = sorted_failures[valid_idx]
+        
         # Transforma para escala de Weibull
         y = np.log(-np.log(1 - median_ranks))
         x = np.log(sorted_failures)
@@ -134,6 +185,10 @@ class WeibullAnalysis:
         coeffs = np.polyfit(x, y, 1)
         beta = coeffs[0]
         eta = np.exp(-coeffs[1] / beta)
+        
+        # Garante valores razoáveis
+        beta = max(0.1, min(beta, 10))
+        eta = max(np.min(sorted_failures) * 0.5, min(eta, np.max(sorted_failures) * 2))
         
         return beta, eta
     
@@ -153,7 +208,6 @@ class WeibullAnalysis:
         n = len(self.failures)
         
         # Aproximação usando Fisher Information Matrix
-        # Para simplificar, usamos aproximação baseada em bootstrap
         alpha = 1 - confidence_level
         z = stats.norm.ppf(1 - alpha/2)
         
@@ -240,7 +294,7 @@ class WeibullAnalysis:
         beta = self.results["beta"]
         eta = self.results["eta"]
         
-        return eta * stats.gamma(1 + 1/beta)
+        return eta * gamma(1 + 1/beta)
     
     def median_life(self) -> float:
         """
@@ -291,7 +345,7 @@ class WeibullAnalysis:
             failure_mode = "Mortalidade Infantil"
             behavior = "Taxa de falha decrescente - falhas precoces são mais comuns"
             recommendation = "Considere burn-in ou seleção de componentes"
-        elif beta == 1:
+        elif 0.9 <= beta <= 1.1:  # Tolerância para beta ≈ 1
             failure_mode = "Vida Útil (Falhas Aleatórias)"
             behavior = "Taxa de falha constante - falhas ocorrem aleatoriamente"
             recommendation = "Manutenção baseada em condição pode ser apropriada"
@@ -306,4 +360,3 @@ class WeibullAnalysis:
             "recommendation": recommendation,
             "beta_value": f"{beta:.3f}"
         }
-
