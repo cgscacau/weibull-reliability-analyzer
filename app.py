@@ -5,15 +5,19 @@ Aplicativo para análise de confiabilidade usando distribuição de Weibull
 import streamlit as st
 import sys
 import os
+import numpy as np
 
 # Adiciona o diretório raiz ao path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from config.settings import APP_CONFIG
+from config.settings import APP_CONFIG, TOOLTIPS
 from modules.data_handler.file_uploader import FileUploader
 from modules.data_handler.data_validator import DataValidator
 from modules.data_handler.data_processor import DataProcessor
-from utils.helpers import init_session_state
+from modules.analysis.weibull_analysis import WeibullAnalysis
+from modules.analysis.reliability_metrics import ReliabilityMetrics
+from modules.analysis.statistical_tests import StatisticalTests
+from utils.helpers import init_session_state, format_number
 from utils.constants import TIME_UNITS
 
 # Configuração da página
@@ -25,6 +29,7 @@ init_session_state("filename", None)
 init_session_state("data_status", "not_loaded")
 init_session_state("validation_results", None)
 init_session_state("processed_data", None)
+init_session_state("analysis_results", None)
 
 # Título principal
 st.title("📊 Weibull Reliability Analyzer")
@@ -141,6 +146,171 @@ if st.session_state.get("validation_results") and st.session_state["validation_r
             processor.display_processed_data()
             
             st.success("✅ Dados processados com sucesso! Pronto para análise.")
+
+# ETAPA 4: Análise de Weibull
+if st.session_state.get("processed_data") is not None:
+    st.markdown("---")
+    st.header("4️⃣ Análise de Weibull")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        method = st.selectbox(
+            "Método de Estimação",
+            options=["mle", "rr"],
+            format_func=lambda x: "Maximum Likelihood (MLE)" if x == "mle" else "Rank Regression (RR)",
+            help="MLE é geralmente mais preciso, mas RR é mais rápido"
+        )
+    
+    with col2:
+        confidence_level = st.slider(
+            "Nível de Confiança",
+            min_value=0.80,
+            max_value=0.99,
+            value=0.95,
+            step=0.01,
+            format="%.2f",
+            help="Nível de confiança para intervalos"
+        )
+    
+    if st.button("📈 Executar Análise de Weibull", type="primary"):
+        with st.spinner("Executando análise de Weibull..."):
+            # Análise de Weibull
+            weibull = WeibullAnalysis(st.session_state["processed_data"])
+            results = weibull.fit(method=method, confidence_level=confidence_level)
+            
+            # Métricas de confiabilidade
+            metrics_calc = ReliabilityMetrics(weibull)
+            metrics = metrics_calc.calculate_all_metrics()
+            
+            # Testes estatísticos
+            tests = StatisticalTests(weibull)
+            test_results = tests.run_all_tests()
+            
+            # Interpretação
+            interpretation = weibull.get_interpretation()
+            
+            # Armazena resultados
+            st.session_state["analysis_results"] = {
+                "weibull": results,
+                "metrics": metrics,
+                "tests": test_results,
+                "interpretation": interpretation,
+                "weibull_obj": weibull,
+                "metrics_obj": metrics_calc
+            }
+            
+            st.session_state["data_status"] = "analyzed"
+            
+            # EXIBE RESULTADOS
+            st.success("✅ Análise concluída com sucesso!")
+            
+            # Parâmetros de Weibull
+            st.subheader("📊 Parâmetros de Weibull")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.metric(
+                    label="β (Beta) - Parâmetro de Forma",
+                    value=f"{results['beta']:.4f}",
+                    help=TOOLTIPS["beta"]
+                )
+                st.caption(f"IC {confidence_level*100:.0f}%: [{results['beta_ci'][0]:.4f}, {results['beta_ci'][1]:.4f}]")
+            
+            with col2:
+                st.metric(
+                    label=f"η (Eta) - Parâmetro de Escala ({results['time_unit']})",
+                    value=f"{results['eta']:.2f}",
+                    help=TOOLTIPS["eta"]
+                )
+                st.caption(f"IC {confidence_level*100:.0f}%: [{results['eta_ci'][0]:.2f}, {results['eta_ci'][1]:.2f}]")
+            
+            # Interpretação
+            st.markdown("---")
+            st.subheader("🔍 Interpretação dos Resultados")
+            
+            st.info(f"""
+            **Modo de Falha:** {interpretation['failure_mode']}
+            
+            **Comportamento:** {interpretation['behavior']}
+            
+            **Recomendação:** {interpretation['recommendation']}
+            
+            **Valor de β:** {interpretation['beta_value']}
+            """)
+            
+            # Métricas de Confiabilidade
+            st.markdown("---")
+            st.subheader("📈 Métricas de Confiabilidade")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric(
+                    "MTTF",
+                    format_number(metrics["mttf"], 2, results['time_unit']),
+                    help=TOOLTIPS["mtbf"]
+                )
+            
+            with col2:
+                st.metric(
+                    "Vida Mediana",
+                    format_number(metrics["median_life"], 2, results['time_unit']),
+                    help="Tempo em que 50% das unidades falharam"
+                )
+            
+            with col3:
+                st.metric(
+                    "B10 Life",
+                    format_number(metrics["b10_life"], 2, results['time_unit']),
+                    help="Tempo em que 10% das unidades falharam"
+                )
+            
+            with col4:
+                st.metric(
+                    "Vida Característica",
+                    format_number(metrics["characteristic_life"], 2, results['time_unit']),
+                    help="Tempo em que 63.2% das unidades falharam (η)"
+                )
+            
+            # Testes Estatísticos
+            st.markdown("---")
+            st.subheader("🧪 Testes de Adequação")
+            
+            # R²
+            r2_result = test_results["r_squared"]
+            st.metric(
+                "Coeficiente de Determinação (R²)",
+                f"{r2_result['r_squared']:.4f}",
+                delta=r2_result['quality'],
+                help="Mede a qualidade do ajuste da distribuição aos dados"
+            )
+            st.caption(r2_result['interpretation'])
+            
+            # Anderson-Darling
+            ad_result = test_results["anderson_darling"]
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Teste Anderson-Darling**")
+                st.write(f"Estatística: {ad_result['statistic']:.4f}")
+                st.write(f"Valor Crítico: {ad_result['critical_value']:.4f}")
+                if ad_result['passed']:
+                    st.success("✅ " + ad_result['interpretation'])
+                else:
+                    st.warning("⚠️ " + ad_result['interpretation'])
+            
+            # Kolmogorov-Smirnov
+            ks_result = test_results["kolmogorov_smirnov"]
+            with col2:
+                st.write("**Teste Kolmogorov-Smirnov**")
+                st.write(f"Estatística: {ks_result['statistic']:.4f}")
+                st.write(f"P-valor: {ks_result['p_value']:.4f}")
+                if ks_result['passed']:
+                    st.success("✅ " + ks_result['interpretation'])
+                else:
+                    st.warning("⚠️ " + ks_result['interpretation'])
 
 # Mensagem inicial
 if st.session_state["data"] is None:
