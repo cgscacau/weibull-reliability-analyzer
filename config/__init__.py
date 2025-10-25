@@ -1,1 +1,26 @@
+"""
+Módulo de configurações
+"""
+from .settings import (
+    APP_CONFIG,
+    COLORS,
+    PLOT_CONFIG,
+    SUPPORTED_FORMATS,
+    REQUIRED_COLUMNS,
+    WEIBULL_CONFIG,
+    TOOLTIPS,
+    EXPLANATIONS,
+    VALIDATION_CONFIG,
+)
 
+__all__ = [
+    "APP_CONFIG",
+    "COLORS",
+    "PLOT_CONFIG",
+    "SUPPORTED_FORMATS",
+    "REQUIRED_COLUMNS",
+    "WEIBULL_CONFIG",
+    "TOOLTIPS",
+    "EXPLANATIONS",
+    "VALIDATION_CONFIG",
+]
