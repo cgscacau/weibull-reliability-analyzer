@@ -11,7 +11,10 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from config.settings import APP_CONFIG
 from modules.data_handler.file_uploader import FileUploader
+from modules.data_handler.data_validator import DataValidator
+from modules.data_handler.data_processor import DataProcessor
 from utils.helpers import init_session_state
+from utils.constants import TIME_UNITS
 
 # Configuração da página
 st.set_page_config(**APP_CONFIG)
@@ -20,6 +23,8 @@ st.set_page_config(**APP_CONFIG)
 init_session_state("data", None)
 init_session_state("filename", None)
 init_session_state("data_status", "not_loaded")
+init_session_state("validation_results", None)
+init_session_state("processed_data", None)
 
 # Título principal
 st.title("📊 Weibull Reliability Analyzer")
@@ -48,7 +53,7 @@ Bem-vindo ao **Weibull Reliability Analyzer**! Este aplicativo permite realizar 
 completas de confiabilidade utilizando a distribuição de Weibull.
 
 **Funcionalidades principais:**
-- Upload de dados em múltiplos formatos (CSV, Excel, PDF)
+- Upload de dados em múltiplos formatos (CSV, Excel)
 - Análise estatística completa com distribuição de Weibull
 - Visualizações interativas e intuitivas
 - Cálculo de métricas de confiabilidade (MTBF, taxa de falha, etc.)
@@ -57,7 +62,8 @@ completas de confiabilidade utilizando a distribuição de Weibull.
 
 st.markdown("---")
 
-# Upload de arquivo
+# ETAPA 1: Upload de arquivo
+st.header("1️⃣ Upload de Dados")
 uploader = FileUploader()
 result = uploader.upload_file()
 
@@ -75,10 +81,69 @@ if result is not None:
         st.metric("📊 Número de Colunas", len(df.columns))
     with col3:
         st.metric("📁 Arquivo", filename)
-    
-    st.success("✅ Dados carregados! Prossiga para a validação na próxima etapa.")
 
-else:
+# ETAPA 2: Validação de dados
+if st.session_state["data"] is not None:
+    st.markdown("---")
+    st.header("2️⃣ Validação de Dados")
+    
+    if st.button("🔍 Validar Dados", type="primary"):
+        with st.spinner("Validando dados..."):
+            validator = DataValidator(st.session_state["data"])
+            validation_results = validator.validate()
+            st.session_state["validation_results"] = validation_results
+            
+            # Exibe resultados
+            is_valid = validator.display_validation_results()
+            
+            if is_valid:
+                st.session_state["data_status"] = "validated"
+
+# ETAPA 3: Processamento de dados
+if st.session_state.get("validation_results") and st.session_state["validation_results"]["is_valid"]:
+    st.markdown("---")
+    st.header("3️⃣ Processamento de Dados")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        time_unit = st.selectbox(
+            "Unidade de Tempo",
+            options=list(TIME_UNITS.keys()),
+            format_func=lambda x: TIME_UNITS[x],
+            help="Selecione a unidade de tempo dos seus dados"
+        )
+    
+    with col2:
+        remove_outliers = st.checkbox(
+            "Remover Outliers",
+            value=False,
+            help="Remove valores extremos que podem afetar a análise"
+        )
+    
+    if st.button("⚙️ Processar Dados", type="primary"):
+        with st.spinner("Processando dados..."):
+            validation_results = st.session_state["validation_results"]
+            processor = DataProcessor(
+                st.session_state["data"],
+                validation_results["column_mapping"]
+            )
+            
+            processed_df = processor.process(
+                time_unit=TIME_UNITS[time_unit],
+                remove_outliers=remove_outliers
+            )
+            
+            st.session_state["processed_data"] = processed_df
+            st.session_state["data_status"] = "processed"
+            
+            # Exibe dados processados
+            processor.display_processed_data()
+            
+            st.success("✅ Dados processados com sucesso! Pronto para análise.")
+
+# Mensagem inicial
+if st.session_state["data"] is None:
     st.info("👆 Faça o upload de um arquivo para começar a análise.")
 
 # Footer
