@@ -43,24 +43,27 @@ class DataProcessor:
         # 1. Renomeia colunas para padrão
         df = self._rename_columns(df)
         
-        # 2. Remove valores nulos
+        # 2. Converte tempo_falha para numérico ANTES de qualquer operação
+        df["tempo_falha"] = pd.to_numeric(df["tempo_falha"], errors='coerce')
+        
+        # 3. Remove valores nulos (incluindo valores que não puderam ser convertidos)
         df = self._remove_nulls(df)
         
-        # 3. Trata duplicatas
+        # 4. Trata duplicatas
         df = self._handle_duplicates(df, handle_duplicates)
         
-        # 4. Adiciona coluna de status se não existir
+        # 5. Adiciona coluna de status se não existir
         df = self._add_status_column(df)
         
-        # 5. Remove outliers se solicitado
+        # 6. Remove outliers se solicitado
         if remove_outliers:
             df = self._remove_outliers(df)
         
-        # 6. Ordena por tempo e reseta índice
+        # 7. Ordena por tempo e reseta índice
         df = df.sort_values("tempo_falha").copy()
         df = df.reset_index(drop=True)
         
-        # 7. Adiciona metadados
+        # 8. Adiciona metadados
         df.attrs["time_unit"] = time_unit
         df.attrs["processed"] = True
         
@@ -93,7 +96,7 @@ class DataProcessor:
         removed_count = initial_count - len(df)
         
         if removed_count > 0:
-            st.info(f"ℹ️ {removed_count} registros com tempo nulo foram removidos.")
+            st.info(f"ℹ️ {removed_count} registros com tempo nulo ou inválido foram removidos.")
         
         return df
     
@@ -129,7 +132,8 @@ class DataProcessor:
             df["status"] = 1
             st.info("ℹ️ Coluna de status criada. Todos os registros marcados como falhas.")
         else:
-            # Garante que status é 0 ou 1
+            # Converte status para numérico e garante que é 0 ou 1
+            df["status"] = pd.to_numeric(df["status"], errors='coerce').fillna(1)
             df["status"] = df["status"].apply(lambda x: 1 if x != 0 else 0)
         
         return df
