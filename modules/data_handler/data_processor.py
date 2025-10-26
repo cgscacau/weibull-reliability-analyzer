@@ -38,7 +38,7 @@ class DataProcessor:
         Returns:
             DataFrame processado
         """
-        df = self.df_original.copy()
+        df = self.df_original.copy()  # ADICIONAR .copy() aqui também
         
         # 1. Renomeia colunas para padrão
         df = self._rename_columns(df)
@@ -56,8 +56,8 @@ class DataProcessor:
         if remove_outliers:
             df = self._remove_outliers(df)
         
-        # 6. Ordena por tempo
-        df = df.sort_values("tempo_falha").reset_index(drop=True)
+        # 6. Ordena por tempo e reseta índice
+        df = df.sort_values("tempo_falha").reset_index(drop=True).copy()  # ADICIONAR .copy()
         
         # 7. Adiciona metadados
         df.attrs["time_unit"] = time_unit
@@ -66,6 +66,7 @@ class DataProcessor:
         self.df_processed = df
         
         return df
+
     
     def _rename_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Renomeia colunas para padrão"""
@@ -87,13 +88,15 @@ class DataProcessor:
     def _remove_nulls(self, df: pd.DataFrame) -> pd.DataFrame:
         """Remove valores nulos da coluna de tempo"""
         initial_count = len(df)
-        df = df.dropna(subset=["tempo_falha"])
+        df = df.dropna(subset=["tempo_falha"]).copy()  # ADICIONAR .copy()
+        df = df.reset_index(drop=True)  # Agora funciona
         removed_count = initial_count - len(df)
         
         if removed_count > 0:
             st.info(f"ℹ️ {removed_count} registros com tempo nulo foram removidos.")
         
         return df
+
     
     def _handle_duplicates(self, df: pd.DataFrame, method: str) -> pd.DataFrame:
         """
