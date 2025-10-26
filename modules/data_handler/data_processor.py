@@ -144,28 +144,38 @@ class DataProcessor:
         """
         initial_count = len(df)
         
-        if method == "iqr":
-            Q1 = df["tempo_falha"].quantile(0.25)
-            Q3 = df["tempo_falha"].quantile(0.75)
-            IQR = Q3 - Q1
+        try:
+            if method == "iqr":
+                # Calcula quartis de forma mais segura
+                tempo_values = df["tempo_falha"].values
+                Q1 = np.percentile(tempo_values, 25)
+                Q3 = np.percentile(tempo_values, 75)
+                IQR = Q3 - Q1
+                
+                lower_bound = Q1 - 3 * IQR
+                upper_bound = Q3 + 3 * IQR
+                
+                df = df[(df["tempo_falha"] >= lower_bound) & (df["tempo_falha"] <= upper_bound)].copy()
             
-            lower_bound = Q1 - 3 * IQR
-            upper_bound = Q3 + 3 * IQR
+            elif method == "zscore":
+                from scipy import stats
+                tempo_values = df["tempo_falha"].values
+                z_scores = np.abs(stats.zscore(tempo_values))
+                df = df[z_scores < 3].copy()
             
-            df = df[(df["tempo_falha"] >= lower_bound) & (df["tempo_falha"] <= upper_bound)].copy()
+            df = df.reset_index(drop=True)
+            removed_count = initial_count - len(df)
+            
+            if removed_count > 0:
+                st.warning(f"⚠️ {removed_count} outliers foram removidos dos dados.")
         
-        elif method == "zscore":
-            from scipy import stats
-            z_scores = np.abs(stats.zscore(df["tempo_falha"]))
-            df = df[z_scores < 3].copy()
-        
-        df = df.reset_index(drop=True)
-        removed_count = initial_count - len(df)
-        
-        if removed_count > 0:
-            st.warning(f"⚠️ {removed_count} outliers foram removidos dos dados.")
+        except Exception as e:
+            st.error(f"Erro ao remover outliers: {str(e)}")
+            # Retorna DataFrame original se houver erro
+            return df
         
         return df
+
     
     def get_summary(self) -> Dict:
         """Retorna resumo do processamento"""
