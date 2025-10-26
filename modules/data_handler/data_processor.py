@@ -146,7 +146,7 @@ class DataProcessor:
         
         try:
             if method == "iqr":
-                # Calcula quartis de forma mais segura
+                # Usa numpy diretamente para evitar problemas de compatibilidade
                 tempo_values = df["tempo_falha"].values
                 Q1 = np.percentile(tempo_values, 25)
                 Q3 = np.percentile(tempo_values, 75)
@@ -170,12 +170,11 @@ class DataProcessor:
                 st.warning(f"⚠️ {removed_count} outliers foram removidos dos dados.")
         
         except Exception as e:
-            st.error(f"Erro ao remover outliers: {str(e)}")
+            st.error(f"Erro ao remover outliers: {str(e)}. Continuando sem remover outliers.")
             # Retorna DataFrame original se houver erro
-            return df
+            df = df.reset_index(drop=True)
         
         return df
-
     
     def get_summary(self) -> Dict:
         """Retorna resumo do processamento"""
