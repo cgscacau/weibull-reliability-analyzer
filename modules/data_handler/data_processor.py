@@ -38,7 +38,7 @@ class DataProcessor:
         Returns:
             DataFrame processado
         """
-        df = self.df_original.copy()  # ADICIONAR .copy() aqui também
+        df = self.df_original.copy()
         
         # 1. Renomeia colunas para padrão
         df = self._rename_columns(df)
@@ -57,7 +57,8 @@ class DataProcessor:
             df = self._remove_outliers(df)
         
         # 6. Ordena por tempo e reseta índice
-        df = df.sort_values("tempo_falha").reset_index(drop=True).copy()  # ADICIONAR .copy()
+        df = df.sort_values("tempo_falha").copy()
+        df = df.reset_index(drop=True)
         
         # 7. Adiciona metadados
         df.attrs["time_unit"] = time_unit
@@ -66,7 +67,6 @@ class DataProcessor:
         self.df_processed = df
         
         return df
-
     
     def _rename_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Renomeia colunas para padrão"""
@@ -88,15 +88,14 @@ class DataProcessor:
     def _remove_nulls(self, df: pd.DataFrame) -> pd.DataFrame:
         """Remove valores nulos da coluna de tempo"""
         initial_count = len(df)
-        df = df.dropna(subset=["tempo_falha"]).copy()  # ADICIONAR .copy()
-        df = df.reset_index(drop=True)  # Agora funciona
+        df = df.dropna(subset=["tempo_falha"]).copy()
+        df = df.reset_index(drop=True)
         removed_count = initial_count - len(df)
         
         if removed_count > 0:
             st.info(f"ℹ️ {removed_count} registros com tempo nulo foram removidos.")
         
         return df
-
     
     def _handle_duplicates(self, df: pd.DataFrame, method: str) -> pd.DataFrame:
         """
@@ -109,12 +108,13 @@ class DataProcessor:
         initial_count = len(df)
         
         if method == "keep_first":
-            df = df.drop_duplicates(subset=["tempo_falha"], keep="first")
+            df = df.drop_duplicates(subset=["tempo_falha"], keep="first").copy()
         elif method == "keep_last":
-            df = df.drop_duplicates(subset=["tempo_falha"], keep="last")
+            df = df.drop_duplicates(subset=["tempo_falha"], keep="last").copy()
         elif method == "remove_all":
-            df = df.drop_duplicates(subset=["tempo_falha"], keep=False)
+            df = df.drop_duplicates(subset=["tempo_falha"], keep=False).copy()
         
+        df = df.reset_index(drop=True)
         removed_count = initial_count - len(df)
         
         if removed_count > 0:
@@ -152,13 +152,14 @@ class DataProcessor:
             lower_bound = Q1 - 3 * IQR
             upper_bound = Q3 + 3 * IQR
             
-            df = df[(df["tempo_falha"] >= lower_bound) & (df["tempo_falha"] <= upper_bound)]
+            df = df[(df["tempo_falha"] >= lower_bound) & (df["tempo_falha"] <= upper_bound)].copy()
         
         elif method == "zscore":
             from scipy import stats
             z_scores = np.abs(stats.zscore(df["tempo_falha"]))
-            df = df[z_scores < 3]
+            df = df[z_scores < 3].copy()
         
+        df = df.reset_index(drop=True)
         removed_count = initial_count - len(df)
         
         if removed_count > 0:
@@ -211,4 +212,3 @@ class DataProcessor:
                 file_name="dados_processados.csv",
                 mime="text/csv"
             )
-
